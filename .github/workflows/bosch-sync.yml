@@ -12,10 +12,19 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Download Bosch Material Export
+      - name: Download Bosch Material Export (diagnostic)
         run: |
-          curl -sSL -f -o bosch_stock_export.csv \
-            "https://extranet-emea.bosch-pt.com/cgi-bin/WebObjects.dll/V5Prod_CatalogWeb.woa/wa/Exchange/material?exchange=35npim6aefn7v99hq01f8sgm94&customer=9781000885"
+          HTTP_CODE=$(curl -sSL -o bosch_stock_export.csv -w "%{http_code}" \
+            -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
+            "https://extranet-emea.bosch-pt.com/cgi-bin/WebObjects.dll/V5Prod_CatalogWeb.woa/wa/Exchange/material?exchange=cc9uahl7ubrhjpbdr5fqnjlrln&customer=9781000885")
+          echo "HTTP status code: $HTTP_CODE"
+          echo "----- Response content (first 40 lines) -----"
+          head -40 bosch_stock_export.csv
+          echo "-----------------------------------------------"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "Non-200 response — stopping here, this run should show as failed."
+            exit 1
+          fi
 
       - name: Verify the download isn't empty/broken
         run: |
