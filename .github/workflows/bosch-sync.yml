@@ -16,7 +16,7 @@ jobs:
         run: |
           HTTP_CODE=$(curl -sSL -o bosch_stock_export.csv -w "%{http_code}" \
             -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
-            "https://extranet-emea.bosch-pt.com/cgi-bin/WebObjects.dll/V5Prod_CatalogWeb.woa/wa/Exchange/material?exchange=cc9uahl7ubrhjpbdr5fqnjlrln&customer=9781000885")
+            "https://extranet-emea.bosch-pt.com/cgi-bin/WebObjects.dll/V5Prod_CatalogWeb.woa/wa/Exchange/material?exchange=nbukp1kqrcojsg35nj3pedv872&customer=9781000885")
           echo "HTTP status code: $HTTP_CODE"
           echo "----- Response content (first 40 lines) -----"
           head -40 bosch_stock_export.csv
