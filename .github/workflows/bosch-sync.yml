@@ -2,7 +2,7 @@ name: Bosch Stock Export Sync
 
 on:
   schedule:
-    - cron: '0 5 * * *'   # 05:00 UTC = 07:00 SAST, every day
+    - cron: '0 6 * * *'   # 06:00 UTC = 08:00 SAST, every day
   workflow_dispatch:        # lets you also trigger it manually from the Actions tab
 
 jobs:
@@ -12,15 +12,15 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Download Bosch Material Export (diagnostic)
+      - name: Download Bosch Material Export
         run: |
-          HTTP_CODE=$(curl -sSL -o bosch_stock_export.csv -w "%{http_code}" \
+          HTTP_CODE=$(curl -sSL -o bosch_stock_export.csv -D response_headers.txt -w "%{http_code}" \
             -A "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36" \
             "https://extranet-emea.bosch-pt.com/cgi-bin/WebObjects.dll/V5Prod_CatalogWeb.woa/wa/Exchange/material?exchange=nbukp1kqrcojsg35nj3pedv872&customer=9781000885")
           echo "HTTP status code: $HTTP_CODE"
-          echo "----- Response content (first 40 lines) -----"
-          head -40 bosch_stock_export.csv
-          echo "-----------------------------------------------"
+          echo "----- Response headers -----"
+          cat response_headers.txt
+          echo "-----------------------------"
           if [ "$HTTP_CODE" != "200" ]; then
             echo "Non-200 response — stopping here, this run should show as failed."
             exit 1
@@ -35,10 +35,45 @@ jobs:
           echo "First few lines:"
           head -5 bosch_stock_export.csv
 
-      - name: Commit and push if the file changed
+      - name: Record sync evidence (timestamp, headers, size, rows, checksum)
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          FILE_SIZE=$(stat -c%s bosch_stock_export.csv)
+          ROW_COUNT=$(wc -l < bosch_stock_export.csv)
+          NEW_CHECKSUM=$(sha256sum bosch_stock_export.csv | awk '{print $1}')
+          LAST_MODIFIED=$(grep -i '^last-modified:' response_headers.txt | sed -E 's/^[Ll]ast-[Mm]odified:[[:space:]]*//' | tr -d '\r')
+          ETAG=$(grep -i '^etag:' response_headers.txt | sed -E 's/^[Ee][Tt]ag:[[:space:]]*//' | tr -d '\r')
+
+          OLD_CHECKSUM=""
+          if [ -f checksum.txt ]; then
+            OLD_CHECKSUM=$(cat checksum.txt)
+          fi
+          if [ "$NEW_CHECKSUM" = "$OLD_CHECKSUM" ]; then
+            CHANGED="false"
+          else
+            CHANGED="true"
+          fi
+          echo "$NEW_CHECKSUM" > checksum.txt
+
+          if [ ! -f sync_log.csv ]; then
+            echo "timestamp_utc,file_size_bytes,row_count,sha256_checksum,checksum_changed,bosch_last_modified,bosch_etag" > sync_log.csv
+          fi
+          echo "$TIMESTAMP,$FILE_SIZE,$ROW_COUNT,$NEW_CHECKSUM,$CHANGED,\"$LAST_MODIFIED\",\"$ETAG\"" >> sync_log.csv
+
+          echo "----- This run's evidence -----"
+          echo "Timestamp (UTC): $TIMESTAMP"
+          echo "File size: $FILE_SIZE bytes"
+          echo "Row count: $ROW_COUNT"
+          echo "SHA-256: $NEW_CHECKSUM"
+          echo "Changed since last run: $CHANGED"
+          echo "Bosch Last-Modified header: $LAST_MODIFIED"
+          echo "Bosch ETag header: $ETAG"
+          echo "--------------------------------"
+
+      - name: Commit and push evidence + file
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add bosch_stock_export.csv
-          git diff --staged --quiet || git commit -m "Update Bosch stock export $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          git add bosch_stock_export.csv checksum.txt sync_log.csv
+          git diff --staged --quiet || git commit -m "Bosch sync $(date -u +%Y-%m-%dT%H:%M:%SZ)"
           git push
